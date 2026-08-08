@@ -1,0 +1,32 @@
+# Terraform / OpenTofu
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+.terraform.lock.hcl.bak
+override.tf
+override.tf.json
+*_override.tf
+
+# Go
+services/demo-api/bin/
+*.test
+coverage.out
+
+# Kubernetes / local tooling
+kubeconfig*
+*.kubeconfig
+clusters/local/.cache/
+
+# Supply chain artefacts produced locally (CI publishes its own)
+supply-chain/out/
+
+# Bench raw output (metrics.json and docs/results.md are committed)
+bench/out/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
