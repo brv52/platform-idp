@@ -55,17 +55,12 @@ func (s *Server) SetReady(v bool) { s.ready.Store(v) }
 
 // App returns the handler for user traffic. It is also served over mTLS.
 func (s *Server) App() http.Handler {
-	api := http.NewServeMux()
-	api.HandleFunc("GET /api/v1/items", s.items)
-	api.HandleFunc("GET /api/v1/whoami", s.whoami)
-
-	var h http.Handler = api
-	if s.opts.Faults != nil {
-		h = s.opts.Faults.Middleware(h)
-	}
-
+	// Faults wrap each API route individually, after the mux has matched it,
+	// so injected errors and latency are recorded under the real route
+	// pattern instead of a catch-all prefix.
 	mux := http.NewServeMux()
-	mux.Handle("/api/", h)
+	mux.Handle("GET /api/v1/items", s.withFaults(s.items))
+	mux.Handle("GET /api/v1/whoami", s.withFaults(s.whoami))
 	mux.HandleFunc("GET /healthz", s.healthz)
 
 	var out http.Handler = mux
@@ -73,6 +68,13 @@ func (s *Server) App() http.Handler {
 		out = s.opts.Middleware[i](out)
 	}
 	return out
+}
+
+func (s *Server) withFaults(h http.HandlerFunc) http.Handler {
+	if s.opts.Faults == nil {
+		return h
+	}
+	return s.opts.Faults.Middleware(h)
 }
 
 // Ops returns the handler for probes, metrics and fault administration.
