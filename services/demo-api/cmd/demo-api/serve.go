@@ -16,6 +16,7 @@ import (
 
 	"github.com/brv52/platform-idp/services/demo-api/internal/faults"
 	"github.com/brv52/platform-idp/services/demo-api/internal/server"
+	"github.com/brv52/platform-idp/services/demo-api/internal/telemetry"
 )
 
 type serveConfig struct {
@@ -48,10 +49,28 @@ func serve(ctx context.Context, args []string) error {
 	}
 	slog.Info("starting", "version", version, "faults", fcfg, "admin", cfg.enableAdmin)
 
+	tel, err := telemetry.Setup(ctx, telemetry.Config{
+		ServiceName: envOr("OTEL_SERVICE_NAME", "demo-api"),
+		Version:     version,
+		OTLP:        os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "",
+	})
+	if err != nil {
+		return fmt.Errorf("telemetry: %w", err)
+	}
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := tel.Shutdown(sctx); err != nil {
+			slog.Warn("telemetry shutdown", "err", err)
+		}
+	}()
+
 	srv := server.New(server.Options{
 		Version:     version,
 		Faults:      inj,
 		EnableAdmin: cfg.enableAdmin,
+		Middleware:  tel.Middleware(),
+		Metrics:     tel.MetricsHandler(),
 	})
 
 	servers := []*http.Server{
