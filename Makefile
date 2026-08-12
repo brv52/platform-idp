@@ -2,6 +2,8 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
 CLUSTER_NAME ?= platform-idp
+VERSION      ?= $(shell git rev-parse --short HEAD)
+IMAGE        ?= localhost:5001/demo-api
 
 .PHONY: help
 help: ## Show targets
@@ -22,6 +24,13 @@ teardown: ## Delete the local kind cluster
 .PHONY: test
 test: ## Run Go unit tests
 	cd services/demo-api && go test -race ./...
+
+.PHONY: image
+image: ## Build the demo-api image (reproducible timestamps from the last commit)
+	docker buildx build --load \
+	  --build-arg VERSION=$(VERSION) \
+	  --build-arg SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) \
+	  -t $(IMAGE):$(VERSION) services/demo-api
 
 .PHONY: lint
 lint: ## Static checks: go vet, terraform fmt/validate, tflint, kyverno test
