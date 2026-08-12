@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -12,9 +13,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/brv52/platform-idp/services/demo-api/internal/faults"
+	"github.com/brv52/platform-idp/services/demo-api/internal/identity"
 	"github.com/brv52/platform-idp/services/demo-api/internal/server"
 	"github.com/brv52/platform-idp/services/demo-api/internal/telemetry"
 )
@@ -26,6 +29,11 @@ type serveConfig struct {
 	// drainDelay keeps serving after readiness flips so kube-proxy and the
 	// Rollouts traffic router stop sending new requests first.
 	drainDelay time.Duration
+
+	mtls          bool
+	mtlsListen    string
+	mtlsAuthorize string
+	spiffeSocket  string
 }
 
 func serve(ctx context.Context, args []string) error {
@@ -35,6 +43,10 @@ func serve(ctx context.Context, args []string) error {
 	fs.StringVar(&cfg.opsListen, "ops-listen", envOr("OPS_LISTEN_ADDR", ":9090"), "metrics, probes and admin listener")
 	fs.BoolVar(&cfg.enableAdmin, "enable-admin", envBool("FAULT_ADMIN_ENABLED", false), "expose /admin/faults on the ops listener")
 	fs.DurationVar(&cfg.drainDelay, "drain-delay", 5*time.Second, "delay between readiness=false and listener shutdown")
+	fs.BoolVar(&cfg.mtls, "mtls", envBool("MTLS_ENABLED", os.Getenv("SPIFFE_ENDPOINT_SOCKET") != ""), "serve the app over SPIFFE mTLS as well")
+	fs.StringVar(&cfg.mtlsListen, "mtls-listen", envOr("MTLS_LISTEN_ADDR", ":8443"), "mTLS app listener")
+	fs.StringVar(&cfg.mtlsAuthorize, "mtls-authorize", os.Getenv("MTLS_AUTHORIZE"), "allowed client SPIFFE IDs or trust domain (default: own trust domain)")
+	fs.StringVar(&cfg.spiffeSocket, "spiffe-socket", "", "Workload API socket (default: $SPIFFE_ENDPOINT_SOCKET)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -77,7 +89,46 @@ func serve(ctx context.Context, args []string) error {
 		newHTTPServer(cfg.listen, srv.App()),
 		newHTTPServer(cfg.opsListen, srv.Ops()),
 	}
+
+	if cfg.mtls {
+		src, err := waitForSource(ctx, cfg.spiffeSocket)
+		if err != nil {
+			return err
+		}
+		defer src.Close()
+		id, err := identity.LocalID(src)
+		if err != nil {
+			return err
+		}
+		authz, err := identity.ParseAuthorizer(cfg.mtlsAuthorize, id.TrustDomain())
+		if err != nil {
+			return err
+		}
+		slog.Info("spiffe identity", "id", id.String(), "authorize", cmp.Or(cfg.mtlsAuthorize, id.TrustDomain().String()))
+		go identity.WatchRotations(ctx, src, src.Updated(), logRotation)
+
+		ms := newHTTPServer(cfg.mtlsListen, srv.App())
+		ms.TLSConfig = identity.ServerConfig(src, authz)
+		servers = append(servers, ms)
+	}
 	return run(ctx, srv, cfg.drainDelay, servers...)
+}
+
+// waitForSource connects to the Workload API, giving the SPIRE agent time
+// to attest the pod when it starts at the same moment as the workload.
+func waitForSource(ctx context.Context, socket string) (*workloadapi.X509Source, error) {
+	wctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	src, err := identity.NewSource(wctx, socket)
+	if err != nil {
+		return nil, fmt.Errorf("no SVID within 60s: %w", err)
+	}
+	return src, nil
+}
+
+func logRotation(r identity.Rotation) {
+	slog.Info("svid rotated", "id", r.ID.String(), "old_serial", r.OldSerial, "new_serial", r.NewSerial,
+		"not_after", r.NotAfter.UTC().Format(time.RFC3339), "ttl_left", time.Until(r.NotAfter).Round(time.Second).String())
 }
 
 func newHTTPServer(addr string, h http.Handler) *http.Server {

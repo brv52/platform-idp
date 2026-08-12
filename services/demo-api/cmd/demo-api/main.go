@@ -30,10 +30,12 @@ func main() {
 	switch cmd {
 	case "serve":
 		err = serve(ctx, args)
+	case "client":
+		err = client(ctx, args)
 	case "version":
 		fmt.Println(version)
 	default:
-		err = fmt.Errorf("unknown command %q (want serve or version)", cmd)
+		err = fmt.Errorf("unknown command %q (want serve, client or version)", cmd)
 	}
 	if err != nil {
 		logger.Error("exit", "err", err)
