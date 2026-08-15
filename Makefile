@@ -4,6 +4,7 @@ SHELL := /usr/bin/env bash
 CLUSTER_NAME ?= platform-idp
 VERSION      ?= $(shell git rev-parse --short HEAD)
 IMAGE        ?= localhost:5001/demo-api
+TF           ?= $(shell command -v terraform || command -v tofu)
 
 .PHONY: help
 help: ## Show targets
@@ -35,9 +36,9 @@ image: ## Build the demo-api image (reproducible timestamps from the last commit
 .PHONY: lint
 lint: ## Static checks: go vet, terraform fmt/validate, tflint, kyverno test
 	cd services/demo-api && go vet ./...
-	tofu fmt -check -recursive infra/terraform
-	for env in infra/terraform/envs/*/; do (cd $$env && tofu init -backend=false -input=false >/dev/null && tofu validate); done
-	command -v tflint >/dev/null && tflint --chdir=infra/terraform --recursive || echo "tflint not installed, skipping"
+	$(TF) fmt -check -recursive infra/terraform
+	for env in infra/terraform/envs/*/; do (cd $$env && $(TF) init -backend=false -input=false >/dev/null && $(TF) validate); done
+	if command -v tflint >/dev/null; then cd infra/terraform && tflint --init --config "$$PWD/.tflint.hcl" >/dev/null && tflint --recursive --config "$$PWD/.tflint.hcl"; else echo "tflint not installed, skipping"; fi
 	command -v kyverno >/dev/null && kyverno test policies/kyverno || echo "kyverno CLI not installed, skipping"
 
 .PHONY: bench
