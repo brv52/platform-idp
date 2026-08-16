@@ -1,0 +1,53 @@
+# Local platform cluster: 1 control plane + 3 workers.
+#
+# Three workers so that the three Kyverno admission replicas, SPIRE agents
+# and canary/stable demo-api pods actually land on different nodes.
+# The node image and cluster name are passed by bootstrap.sh.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  # Pod/service ranges kept away from the cloud VPC/VNet ranges (10.40/10.50).
+  podSubnet: 10.244.0.0/16
+  serviceSubnet: 10.96.0.0/16
+
+# Resolve registry mirrors from /etc/containerd/certs.d (written by
+# bootstrap.sh for the local registry at localhost:5001).
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
+
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            # The admission benchmark drives ~500 concurrent dry-run creates.
+            # Defaults (400 / 200) would make API priority & fairness, not
+            # Kyverno, the bottleneck being measured.
+            - name: max-requests-inflight
+              value: "1600"
+            - name: max-mutating-requests-inflight
+              value: "800"
+            - name: audit-log-maxage
+              value: "1"
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            - name: node-labels
+              value: "ingress-ready=true"
+    extraPortMappings:
+      # Argo CD UI (NodePort 30080) without a port-forward.
+      - containerPort: 30080
+        hostPort: 8080
+        listenAddress: 127.0.0.1
+        protocol: TCP
+  - role: worker
+    labels: { platform-idp/zone: a }
+  - role: worker
+    labels: { platform-idp/zone: b }
+  - role: worker
+    labels: { platform-idp/zone: c }

@@ -1,0 +1,50 @@
+# argo/argo-cd chart 10.11.0 (Argo CD v3.5.5), local profile.
+# Trimmed to what the app-of-apps flow needs to keep memory down.
+global:
+  domain: localhost:8080
+
+configs:
+  params:
+    # TLS is terminated nowhere locally; the UI is on 127.0.0.1 only.
+    server.insecure: true
+  cm:
+    # Poll GitHub every minute: a local cluster cannot receive webhooks, and
+    # commit-to-promotion lead time (idp_lead) includes this delay.
+    timeout.reconciliation: 60s
+    timeout.reconciliation.jitter: 0s
+    # Kyverno and Rollouts rewrite fields on objects they own; without this
+    # their apps would never report Synced.
+    resource.compareoptions: |
+      ignoreAggregatedRoles: true
+      ignoreResourceStatusField: all
+    application.resourceTrackingMethod: annotation
+
+server:
+  service:
+    type: NodePort
+    nodePortHttp: 30080
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+
+controller:
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+
+repoServer:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+
+redis:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+applicationSet:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
