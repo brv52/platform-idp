@@ -1,0 +1,33 @@
+# App of apps. Applied once by clusters/local/bootstrap.sh; everything else
+# is reconciled from git by Argo CD.
+#
+# Child Applications are ordered with sync waves (Argo CD waits for each
+# wave's Applications to be Healthy, see the Application health check in
+# clusters/local/argocd-values.yaml):
+#   -2  spire-crds
+#   -1  argo-rollouts, kyverno, spire, prometheus
+#    0  otel-collector
+#    1  tenants
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/brv52/platform-idp.git
+    targetRevision: main
+    path: gitops
+    directory:
+      recurse: true
+      include: "{platform/*/application.yaml,tenants/application.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

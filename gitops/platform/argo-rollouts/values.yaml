@@ -1,0 +1,17 @@
+# argo/argo-rollouts 2.43.8
+installCRDs: true
+keepCRDs: true
+
+controller:
+  replicas: 1
+  metrics:
+    enabled: true
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8090"
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+dashboard:
+  enabled: false

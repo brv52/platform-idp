@@ -1,0 +1,52 @@
+# kyverno/kyverno 3.9.1 (Kyverno v1.19.1)
+config:
+  webhooks:
+    # Platform namespaces are never subject to tenant policies; a broken
+    # policy must not be able to lock out the control loop that fixes it.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [kube-system, kyverno, argocd]
+
+admissionController:
+  # Three replicas, one per worker: the admission benchmark (bench/admission-k6.js)
+  # measures this deployment under 500 concurrent requests.
+  replicas: 3
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  antiAffinity:
+    enabled: true
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: admission-controller
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+  container:
+    resources:
+      requests: { cpu: 200m, memory: 256Mi }
+      limits: { memory: 768Mi }
+
+backgroundController:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }
+
+cleanupController:
+  replicas: 1
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 128Mi }
+
+reportsController:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { memory: 256Mi }
