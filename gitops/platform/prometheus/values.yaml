@@ -1,0 +1,71 @@
+# prometheus-community/prometheus 29.37.0 (Prometheus v3.15.0)
+server:
+  # Short retention, no PV: the local cluster is disposable and bench results
+  # are exported to metrics.json at the end of each run.
+  retention: 2d
+  persistentVolume:
+    enabled: false
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits: { memory: 1536Mi }
+
+alertmanager:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+# kind nodes share the host kernel; node-exporter would only report the WSL VM.
+prometheus-node-exporter:
+  enabled: false
+
+kube-state-metrics:
+  enabled: true
+  # Lets bench queries join pod restarts to a rollout revision.
+  metricLabelsAllowlist:
+    - pods=[app.kubernetes.io/name,rollouts-pod-template-hash]
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { memory: 128Mi }
+
+scrapeConfigs:
+  kubernetes-pods-slow:
+    enabled: false
+  kubernetes-services:
+    enabled: false
+  kubernetes-service-endpoints-slow:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+
+# demo-api has its own job instead of the annotation-driven kubernetes-pods
+# job so that the labels canary analysis depends on are explicit:
+# rollouts_pod_template_hash comes from the pod label Argo Rollouts sets on
+# every ReplicaSet, which is what isolates canary series from stable ones.
+# demo-api pods therefore must NOT carry prometheus.io/scrape annotations.
+extraScrapeConfigs: |
+  - job_name: demo-api
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [demo]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        regex: demo-api
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        regex: ops
+        action: keep
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: node
+      - source_labels: [__meta_kubernetes_pod_label_rollouts_pod_template_hash]
+        target_label: rollouts_pod_template_hash
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_version]
+        target_label: version

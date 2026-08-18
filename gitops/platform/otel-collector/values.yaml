@@ -1,0 +1,81 @@
+# open-telemetry/opentelemetry-collector 0.177.0, collector-contrib 0.163.1
+# (see docs/versions.md for why the image tag is overridden).
+mode: deployment
+replicaCount: 1
+fullnameOverride: otel-collector
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.163.1"
+
+presets:
+  # Adds k8s.pod.name / k8s.namespace.name / k8s.deployment.name to every
+  # span and metric based on the sender's pod IP.
+  kubernetesAttributes:
+    enabled: true
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8889"
+
+ports:
+  prom-export:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { memory: 384Mi }
+
+config:
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+  connectors:
+    # RED metrics derived from traces, independent of the app's own
+    # instrumentation: a cross-check for the scraped request metrics.
+    spanmetrics:
+      histogram:
+        explicit:
+          buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s]
+      dimensions:
+        - name: http.response.status_code
+      metrics_flush_interval: 15s
+  processors:
+    batch:
+      timeout: 5s
+  exporters:
+    # Scraped by Prometheus (kubernetes-pods job via the annotation above).
+    # Namespaced so OTLP-path series never collide with the per-pod series
+    # canary analysis queries.
+    prometheus:
+      endpoint: ${env:MY_POD_IP}:8889
+      namespace: otel
+      resource_to_telemetry_conversion:
+        enabled: true
+    debug:
+      verbosity: basic
+      sampling_initial: 5
+      sampling_thereafter: 1000
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, k8s_attributes, batch]
+        exporters: [spanmetrics, debug]
+      metrics:
+        receivers: [otlp, spanmetrics]
+        processors: [memory_limiter, k8s_attributes, batch]
+        exporters: [prometheus]
+      logs: null
