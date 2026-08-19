@@ -1,0 +1,5 @@
+# Overlay used only by bench/svid-rotation.sh: shortens the default X.509-SVID
+# TTL from 1h to 5m so that a ~25 minute run covers several rotations. Agents
+# rotate at half-life, i.e. every ~2.5 minutes per workload.
+spire-server:
+  defaultX509SvidTTL: 5m

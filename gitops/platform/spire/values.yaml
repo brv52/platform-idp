@@ -1,0 +1,60 @@
+# spiffe/spire 0.30.3, SPIRE 1.15.4
+global:
+  openshift: false
+  spire:
+    trustDomain: platform-idp.local
+    clusterName: platform-idp-local
+    # Server in its own namespace, agents/CSI driver in spire-system.
+    recommendations:
+      enabled: true
+      namespaceLayout: true
+      namespacePSS: true
+      priorityClassName: true
+      strictMode: false
+      securityContexts: true
+      prometheus: true
+
+spire-server:
+  image:
+    tag: "1.15.4"
+  replicaCount: 1
+  # Production default for this platform. bench/svid-rotation.sh lowers it to
+  # 5m (values-rotation-test.yaml) to force several rotations per run.
+  defaultX509SvidTTL: 1h
+  defaultJwtSvidTTL: 1h
+  caTTL: 24h
+  controllerManager:
+    enabled: true
+    identities:
+      clusterSPIFFEIDs:
+        default:
+          # spiffe://platform-idp.local/ns/<namespace>/sa/<serviceaccount>
+          enabled: true
+          # Only workloads that opt in get an identity.
+          namespaceSelector:
+            matchLabels:
+              platform-idp/spiffe: enabled
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9988"
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+
+spire-agent:
+  image:
+    tag: "1.15.4"
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9988"
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 256Mi }
+
+spiffe-csi-driver:
+  enabled: true
+
+spiffe-oidc-discovery-provider:
+  enabled: false
+tornjak-frontend:
+  enabled: false

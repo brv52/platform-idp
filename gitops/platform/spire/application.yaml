@@ -1,0 +1,67 @@
+# Two Applications: CRDs first (wave -2), then server, agent, CSI driver and
+# controller manager (wave -1).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spire-crds
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://spiffe.github.io/helm-charts-hardened
+    chart: spire-crds
+    targetRevision: 0.6.1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: spire-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spire
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://spiffe.github.io/helm-charts-hardened
+      chart: spire
+      targetRevision: 0.30.3 # ships SPIRE 1.15.3; images pinned to 1.15.4 in values
+      helm:
+        valueFiles:
+          - $values/gitops/platform/spire/values.yaml
+          # bench/svid-rotation.sh appends values-rotation-test.yaml here for
+          # the duration of the test and removes it afterwards.
+    - repoURL: https://github.com/brv52/platform-idp.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: spire-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+  # spire-controller-manager injects its own CA into its webhook at runtime.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - .webhooks[]?.clientConfig.caBundle
