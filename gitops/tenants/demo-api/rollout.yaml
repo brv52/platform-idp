@@ -66,9 +66,9 @@ spec:
           image: demo-api
           args: ["serve"]
           ports:
-            - { name: http, containerPort: 8080 }
-            - { name: mtls, containerPort: 8443 }
-            - { name: ops, containerPort: 9090 }
+            - { name: http, containerPort: 8080, protocol: TCP }
+            - { name: mtls, containerPort: 8443, protocol: TCP }
+            - { name: ops, containerPort: 9090, protocol: TCP }
           env:
             - name: POD_NAME
               valueFrom: { fieldRef: { fieldPath: metadata.name } }

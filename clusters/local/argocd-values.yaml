@@ -7,6 +7,11 @@ configs:
   params:
     # TLS is terminated nowhere locally; the UI is on 127.0.0.1 only.
     server.insecure: true
+    # Diff against what the API server would actually persist (dry-run SSA)
+    # instead of normalising locally. Removes the classic false OutOfSync on
+    # StatefulSet volumeClaimTemplates, Rollout durations and CRDs carrying
+    # empty maps.
+    controller.diff.server.side: "true"
   cm:
     # Poll GitHub every minute: a local cluster cannot receive webhooks, and
     # commit-to-promotion lead time (idp_lead) includes this delay.
