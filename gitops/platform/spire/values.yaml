@@ -4,6 +4,12 @@ global:
   spire:
     trustDomain: platform-idp.local
     clusterName: platform-idp-local
+    # The recommended layout spans two namespaces (spire-server for the
+    # server, spire-system for agents and the CSI driver). Argo CD's
+    # CreateNamespace only covers the destination one, so let the chart own
+    # both (it also applies the matching Pod Security labels).
+    namespaces:
+      create: true
     # Server in its own namespace, agents/CSI driver in spire-system.
     recommendations:
       enabled: true

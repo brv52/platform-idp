@@ -57,7 +57,6 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
       - ServerSideApply=true
   # spire-controller-manager injects its own CA into its webhook at runtime.
   ignoreDifferences:
