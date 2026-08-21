@@ -1,6 +1,13 @@
 # spiffe/spire 0.30.3, SPIRE 1.15.4
 global:
   openshift: false
+  # These hooks patch live objects around `helm upgrade`. Argo CD renders the
+  # chart with `helm template` and owns the lifecycle itself, so they only
+  # fail (the pre-upgrade hook looks for a webhook that does not exist yet).
+  installAndUpgradeHooks:
+    enabled: false
+  deleteHooks:
+    enabled: false
   spire:
     trustDomain: platform-idp.local
     clusterName: platform-idp-local
