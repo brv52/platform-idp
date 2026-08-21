@@ -1,0 +1,51 @@
+# demo-api selects every revision, so callers are spread over stable and
+# canary pods in proportion to replica counts (no traffic router needed).
+# The -stable/-canary services are managed by Argo Rollouts.
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api
+spec:
+  selector:
+    app.kubernetes.io/name: demo-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api-stable
+spec:
+  selector:
+    app.kubernetes.io/name: demo-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api-canary
+spec:
+  selector:
+    app.kubernetes.io/name: demo-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# SPIFFE mTLS endpoint; peers authenticate with X.509-SVIDs, not the network.
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api-mtls
+spec:
+  selector:
+    app.kubernetes.io/name: demo-api
+  ports:
+    - name: mtls
+      port: 8443
+      targetPort: mtls

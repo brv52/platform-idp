@@ -1,0 +1,9 @@
+# Platform-owned traffic source for canary analysis; deliberately not a
+# tenant namespace, so tenant image policies do not apply to fortio.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: loadgen
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

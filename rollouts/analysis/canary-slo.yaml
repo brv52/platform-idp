@@ -1,0 +1,117 @@
+# SLO gate for canaries. Every query is restricted to the canary ReplicaSet
+# through rollouts_pod_template_hash, which the Prometheus demo-api job copies
+# from the pod label Argo Rollouts puts on each revision. Stable pods never
+# contribute to a canary verdict.
+#
+# Availability SLO: 99.5 % non-5xx  ->  error budget 0.005.
+# Burn rate = error ratio / error budget. Multi-window, multi-burn-rate as in
+# the Google SRE workbook (ch. 5), with every window scaled by 1/12 so the
+# alert pairs fit into a ~5 minute canary:
+#
+#   tier   burn   SRE workbook windows   here (long / short)
+#   fast   14.4   1h   / 5m              5m   / 30s
+#   slow    6     6h   / 30m             30m  / 150s
+#
+# A tier fires only if BOTH of its windows exceed the burn rate, which is
+# min(long, short) > threshold. Canary series are younger than the long
+# windows, so in practice "long" means "since the canary started".
+#
+# The smallest error rate each tier catches: fast 7.2 %, slow 3 %.
+#
+# Latency SLO: p99 < 300 ms over the last minute.
+#
+# Timing: first measurement 30s after the canary is available, then every
+# minute; three failed measurements (failureLimit: 2) abort the rollout, so
+# a bad release is rolled back ~2.5 minutes after the canary starts serving.
+# Missing data counts as failure (fail closed): a canary that crashes or
+# serves nothing must not pass.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-slo
+spec:
+  args:
+    - name: canary-hash
+    - name: namespace
+    - name: prometheus
+      value: http://prometheus-server.monitoring.svc.cluster.local
+    - name: error-budget
+      value: "0.005"
+    - name: p99-threshold-seconds
+      value: "0.3"
+  metrics:
+    - name: error-burn-fast
+      interval: 1m
+      initialDelay: 30s
+      failureLimit: 2
+      consecutiveErrorLimit: 3
+      successCondition: len(result) > 0 && !isNaN(result[0]) && result[0] < 14.4
+      provider:
+        prometheus:
+          address: "{{args.prometheus}}"
+          query: |
+            min(
+              label_replace(
+                (sum(rate(http_requests_total{job="demo-api",namespace="{{args.namespace}}",rollouts_pod_template_hash="{{args.canary-hash}}",code=~"5.."}[5m])) or vector(0))
+                / sum(rate(http_requests_total{job="demo-api",namespace="{{args.namespace}}",rollouts_pod_template_hash="{{args.canary-hash}}"}[5m])),
+                "window", "long", "", "")
+              or
+              label_replace(
+                (sum(rate(http_requests_total{job="demo-api",namespace="{{args.namespace}}",rollouts_pod_template_hash="{{args.canary-hash}}",code=~"5.."}[30s])) or vector(0))
+                / sum(rate(http_requests_total{job="demo-api",namespace="{{args.namespace}}",rollouts_pod_template_hash="{{args.canary-hash}}"}[30s])),
+                "window", "short", "", "")
+            ) / {{args.error-budget}}
+
+    - name: error-burn-slow
+      interval: 1m
+      initialDelay: 30s
+      failureLimit: 2
+      consecutiveErrorLimit: 3
+      successCondition: len(result) > 0 && !isNaN(result[0]) && result[0] < 6
+      provider:
+        prometheus:
+          address: "{{args.prometheus}}"
+          query: |
+            min(
+              label_replace(
+                (sum(rate(http_requests_total{job="demo-api",namespace="{{args.namespace}}",rollouts_pod_template_hash="{{args.canary-hash}}",code=~"5.."}[30m])) or vector(0))
+                / sum(rate(http_requests_total{job="demo-api",namespace="{{args.namespace}}",rollouts_pod_template_hash="{{args.canary-hash}}"}[30m])),
+                "window", "long", "", "")
+              or
+              label_replace(
+                (sum(rate(http_requests_total{job="demo-api",namespace="{{args.namespace}}",rollouts_pod_template_hash="{{args.canary-hash}}",code=~"5.."}[150s])) or vector(0))
+                / sum(rate(http_requests_total{job="demo-api",namespace="{{args.namespace}}",rollouts_pod_template_hash="{{args.canary-hash}}"}[150s])),
+                "window", "short", "", "")
+            ) / {{args.error-budget}}
+
+    - name: latency-p99
+      interval: 1m
+      initialDelay: 30s
+      failureLimit: 2
+      consecutiveErrorLimit: 3
+      successCondition: len(result) > 0 && !isNaN(result[0]) && result[0] < {{args.p99-threshold-seconds}}
+      provider:
+        prometheus:
+          address: "{{args.prometheus}}"
+          query: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(http_request_duration_seconds_bucket{job="demo-api",namespace="{{args.namespace}}",rollouts_pod_template_hash="{{args.canary-hash}}"}[1m])))
+
+    # Crash-looping canaries produce few requests and no 5xx (callers see
+    # connection errors instead), so the burn-rate metrics alone would miss
+    # them. Restarts of any canary container fail the analysis outright.
+    - name: canary-restarts
+      interval: 1m
+      initialDelay: 30s
+      failureLimit: 2
+      consecutiveErrorLimit: 3
+      successCondition: len(result) > 0 && result[0] == 0
+      provider:
+        prometheus:
+          address: "{{args.prometheus}}"
+          query: |
+            sum(
+              kube_pod_container_status_restarts_total{namespace="{{args.namespace}}"}
+              * on (namespace, pod) group_left()
+              kube_pod_labels{namespace="{{args.namespace}}",label_rollouts_pod_template_hash="{{args.canary-hash}}"}
+            ) or vector(0)

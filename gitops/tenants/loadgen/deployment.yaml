@@ -1,0 +1,44 @@
+# Constant background traffic so canary metrics always have a denominator.
+# 40 qps total -> ~10 qps on a 25 % canary. Keep-alive is off so every
+# request is load-balanced independently (persistent connections would pin
+# traffic to whichever pods the four connections landed on).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fortio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fortio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fortio
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: fortio
+          image: fortio/fortio:1.76.0@sha256:3dd31ddeb4f962a1dae8cc2a0bce62c408ac830c8435bbea51b1e0fd4c8f7181
+          args:
+            - load
+            - -qps=40
+            - -c=4
+            - -t=0
+            - -keepalive=false
+            - -allow-initial-errors
+            - -loglevel=Warning
+            - http://demo-api.demo.svc.cluster.local/api/v1/items
+          resources:
+            requests: { cpu: 50m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

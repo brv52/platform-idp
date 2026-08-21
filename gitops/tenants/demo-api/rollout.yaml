@@ -1,0 +1,114 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: demo-api
+spec:
+  replicas: 4
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-api
+  # A canary that never becomes available (image pull failure, immediate
+  # crash) is aborted after 2 minutes instead of hanging the rollout.
+  progressDeadlineSeconds: 120
+  progressDeadlineAbort: true
+  strategy:
+    canary:
+      canaryService: demo-api-canary
+      stableService: demo-api-stable
+      maxSurge: 1
+      maxUnavailable: 0
+      # Background analysis starts once the first canary pod is available
+      # (after step 0) and runs until full promotion.
+      analysis:
+        templates:
+          - templateName: canary-slo
+        startingStep: 1
+        args:
+          - name: canary-hash
+            valueFrom:
+              podTemplateHashValue: Latest
+          - name: namespace
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+      steps:
+        - setWeight: 25
+        - pause: { duration: 3m }
+        - setWeight: 50
+        - pause: { duration: 1m }
+        - setWeight: 75
+        - pause: { duration: 1m }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-api
+        app.kubernetes.io/version: "0.1.0"
+    spec:
+      serviceAccountName: demo-api
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: demo-api
+      containers:
+        - name: demo-api
+          image: demo-api
+          args: ["serve"]
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: mtls, containerPort: 8443 }
+            - { name: ops, containerPort: 9090 }
+          env:
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            - name: OTEL_SERVICE_NAME
+              value: demo-api
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector.monitoring.svc.cluster.local:4317
+            - name: OTEL_TRACES_SAMPLER
+              value: parentbased_traceidratio
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "0.1"
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: unix:///spiffe-workload-api/spire-agent.sock
+            # Only workloads in this trust domain may call the mTLS port.
+            - name: MTLS_AUTHORIZE
+              value: platform-idp.local
+          readinessProbe:
+            httpGet: { path: /readyz, port: ops }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: ops }
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /spiffe-workload-api
+              readOnly: true
+      volumes:
+        # Workload API socket from the SPIFFE CSI driver; no hostPath needed.
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true

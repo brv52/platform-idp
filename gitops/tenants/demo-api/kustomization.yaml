@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: demo
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - services.yaml
+  - rollout.yaml
+  - ../../../rollouts/analysis
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: platform-idp
+    includeSelectors: false
+# A release is a change to this block (image) or to the pod template in
+# rollout.yaml (e.g. FAULT_* env for bench regressions). Both create a new
+# ReplicaSet revision and therefore a canary.
+images:
+  - name: demo-api
+    newName: localhost:5001/demo-api
+    newTag: "0.1.0"

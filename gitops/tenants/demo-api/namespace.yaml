@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    # Workloads here get spiffe://platform-idp.local/ns/demo/sa/<sa>.
+    platform-idp/spiffe: enabled
+    # Tenant namespace: Kyverno image verification and the CEL pod security
+    # policies select on this label (policies/).
+    platform-idp/tenant: "true"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
