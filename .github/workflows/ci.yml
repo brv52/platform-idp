@@ -1,0 +1,147 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: services/demo-api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: services/demo-api/go.mod
+          cache-dependency-path: services/demo-api/go.sum
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test -race -coverprofile=coverage.out ./...
+      - run: go tool cover -func=coverage.out | tail -1
+      - uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          work-dir: services/demo-api
+          go-version-file: services/demo-api/go.mod
+
+  terraform:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [aws-dev, azure-dev]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive infra/terraform
+      - name: validate
+        working-directory: infra/terraform/envs/${{ matrix.env }}
+        run: |
+          terraform init -backend=false -input=false -lockfile=readonly
+          terraform validate
+      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
+      - name: tflint
+        working-directory: infra/terraform
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tflint --init --config "$PWD/.tflint.hcl"
+          tflint --chdir "envs/${{ matrix.env }}" --config "$PWD/.tflint.hcl" --call-module-type=local
+
+  # Runs only once cloud OIDC trust is configured (see ACTIONS.md): repository
+  # variables AWS_PLAN_ROLE_ARN / AZURE_CLIENT_ID, AZURE_TENANT_ID,
+  # AZURE_SUBSCRIPTION_ID. No long-lived cloud secrets are stored in GitHub.
+  plan:
+    needs: terraform
+    if: github.event_name == 'push' && (vars.AWS_PLAN_ROLE_ARN != '' || vars.AZURE_CLIENT_ID != '')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+      - if: vars.AWS_PLAN_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: eu-central-1
+      - if: vars.AWS_PLAN_ROLE_ARN != ''
+        working-directory: infra/terraform/envs/aws-dev
+        run: terraform init -input=false && terraform plan -input=false -lock=false -no-color
+      - if: vars.AZURE_CLIENT_ID != ''
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - if: vars.AZURE_CLIENT_ID != ''
+        working-directory: infra/terraform/envs/azure-dev
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: terraform init -input=false && terraform plan -input=false -lock=false -no-color
+
+  policies:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Install Kyverno CLI 1.19.1 (signature-verified)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f=kyverno-cli_v1.19.1_linux_x86_64.tar.gz
+          gh release download v1.19.1 -R kyverno/kyverno -p "$f" -p "$f.sigstore.json"
+          cosign verify-blob "$f" --bundle "$f.sigstore.json" \
+            --certificate-identity-regexp '^https://github.com/kyverno/kyverno/' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          tar -xzf "$f" kyverno && sudo mv kyverno /usr/local/bin/
+      - run: kyverno test policies/tests
+      - name: Render every kustomization
+        run: |
+          for k in policies gitops/tenants rollouts/analysis; do
+            echo "== $k"; kubectl kustomize "$k" > /dev/null
+          done
+
+  shell:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: shellcheck -x $(git ls-files '*.sh')
