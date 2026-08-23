@@ -1,0 +1,163 @@
+# Build, SBOM, sign and provenance for demo-api.
+#
+#   build       image pushed to GHCR by digest, CycloneDX 1.7 SBOMs,
+#               keyless cosign v3 signature + SBOM attestation
+#   provenance  SLSA Build L3 provenance from the isolated reusable workflow
+#               of slsa-github-generator (signed with its own identity)
+#   verify      re-verifies all of it exactly like admission control will
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+    paths:
+      - services/demo-api/**
+      - supply-chain/**
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/demo-api
+  COSIGN_VERSION: v3.1.3
+  SYFT_VERSION: v1.55.0
+  CYCLONEDX_GOMOD_VERSION: v1.12.0
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write   # push image, signature, attestations
+      id-token: write   # Fulcio certificate for keyless signing
+    outputs:
+      image: ${{ env.IMAGE }}
+      digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0-${GITHUB_SHA::7}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "epoch=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: services/demo-api/go.mod
+          cache-dependency-path: services/demo-api/go.sum
+
+      - name: Unit tests
+        working-directory: services/demo-api
+        run: go test -race ./...
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=semver,pattern={{version}}
+            type=raw,value=main,enable={{is_default_branch}}
+
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.version.outputs.epoch }}
+        with:
+          context: services/demo-api
+          platforms: linux/amd64
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # BuildKit's own attestations are disabled: provenance comes from
+          # the SLSA generator and the SBOM from CycloneDX tooling below.
+          provenance: false
+          sbom: false
+          # Reproducible layers: file mtimes clamped to the commit time.
+          outputs: type=registry,rewrite-timestamp=true
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Install SBOM tools
+        run: |
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/${SYFT_VERSION}/install.sh | sh -s -- -b /usr/local/bin ${SYFT_VERSION}
+
+      - name: SBOM (CycloneDX 1.7)
+        run: supply-chain/sbom.sh "${IMAGE}@${{ steps.build.outputs.digest }}" sbom
+
+      - name: Sign and attest SBOM (keyless, cosign v3 bundle)
+        run: supply-chain/sign.sh "${IMAGE}@${{ steps.build.outputs.digest }}" sbom/demo-api.image.cdx.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ steps.version.outputs.version }}
+          path: sbom/
+
+      - name: Summary
+        run: |
+          {
+            echo "### demo-api ${{ steps.version.outputs.version }}"
+            echo '```'
+            echo "${IMAGE}@${{ steps.build.outputs.digest }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  provenance:
+    needs: build
+    permissions:
+      actions: read     # detect the GitHub Actions environment
+      id-token: write   # sign the provenance
+      packages: write   # upload the attestation
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ needs.build.outputs.image }}
+      digest: ${{ needs.build.outputs.digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+  verify:
+    needs: [build, provenance]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify signature, SBOM attestation and SLSA provenance
+        run: supply-chain/verify.sh "${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
+      - name: Storage layout (for the admission policy)
+        run: |
+          ref="${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
+          echo "--- cosign tree"; cosign tree "$ref" || true
