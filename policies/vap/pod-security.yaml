@@ -1,0 +1,82 @@
+# Pod hardening enforced by the API server itself (no webhook, no extra
+# component): a CEL ValidatingAdmissionPolicy roughly equivalent to the
+# Pod Security Standards "restricted" profile, with readable messages that
+# name the offending containers.
+#
+# Unlike PSA namespace labels it applies to every non-platform namespace by
+# default, including namespaces created without any labels.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: platform-idp-pod-security
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  # Note: pod-level fallbacks spell out object.spec.?securityContext.?<field>
+  # each time. Binding the optional securityContext to a variable and
+  # chaining .? on that variable silently yields "absent" on 1.37.
+  variables:
+    - name: containers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([])
+    - name: privileged
+      expression: >-
+        variables.containers.filter(c, c.?securityContext.?privileged.orValue(false)).map(c, c.name)
+    - name: escalating
+      expression: >-
+        variables.containers.filter(c, c.?securityContext.?allowPrivilegeEscalation.orValue(true)).map(c, c.name)
+    - name: rootCapable
+      # runAsNonRoot must be true and runAsUser must not be 0, at container
+      # level or inherited from the pod.
+      expression: >-
+        variables.containers.filter(c,
+          !c.?securityContext.?runAsNonRoot.orValue(object.spec.?securityContext.?runAsNonRoot.orValue(false))
+          || c.?securityContext.?runAsUser.orValue(object.spec.?securityContext.?runAsUser.orValue(-1)) == 0
+        ).map(c, c.name)
+    - name: capsNotDropped
+      expression: >-
+        variables.containers.filter(c,
+          !c.?securityContext.?capabilities.?drop.orValue([]).exists(d, d == 'ALL')).map(c, c.name)
+    - name: capsAdded
+      expression: >-
+        variables.containers.filter(c,
+          c.?securityContext.?capabilities.?add.orValue([]).exists(a, a != 'NET_BIND_SERVICE')).map(c, c.name)
+    - name: hostPathVolumes
+      expression: >-
+        object.spec.?volumes.orValue([]).filter(v, has(v.hostPath)).map(v, v.name)
+    - name: noSeccomp
+      expression: >-
+        variables.containers.filter(c,
+          !(c.?securityContext.?seccompProfile.?type.orValue(object.spec.?securityContext.?seccompProfile.?type.orValue(''))
+            in ['RuntimeDefault', 'Localhost'])).map(c, c.name)
+  validations:
+    - expression: size(variables.privileged) == 0
+      messageExpression: "'privileged containers are not allowed: ' + variables.privileged.join(', ')"
+      reason: Forbidden
+    - expression: size(variables.hostPathVolumes) == 0
+      messageExpression: "'hostPath volumes are not allowed: ' + variables.hostPathVolumes.join(', ')"
+      reason: Forbidden
+    - expression: >-
+        !object.spec.?hostNetwork.orValue(false) && !object.spec.?hostPID.orValue(false) && !object.spec.?hostIPC.orValue(false)
+      message: host network, PID and IPC namespaces are not allowed
+      reason: Forbidden
+    - expression: size(variables.escalating) == 0
+      messageExpression: "'allowPrivilegeEscalation must be false: ' + variables.escalating.join(', ')"
+      reason: Forbidden
+    - expression: size(variables.rootCapable) == 0
+      messageExpression: "'containers must run as non-root (runAsNonRoot: true, runAsUser != 0): ' + variables.rootCapable.join(', ')"
+      reason: Forbidden
+    - expression: size(variables.capsNotDropped) == 0
+      messageExpression: "'capabilities must drop ALL: ' + variables.capsNotDropped.join(', ')"
+      reason: Forbidden
+    - expression: size(variables.capsAdded) == 0
+      messageExpression: "'only NET_BIND_SERVICE may be added: ' + variables.capsAdded.join(', ')"
+      reason: Forbidden
+    - expression: size(variables.noSeccomp) == 0
+      messageExpression: "'seccompProfile must be RuntimeDefault or Localhost: ' + variables.noSeccomp.join(', ')"
+      reason: Forbidden

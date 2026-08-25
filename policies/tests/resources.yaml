@@ -1,0 +1,93 @@
+# Fixtures for `kyverno test policies/tests`. The baseline pod satisfies
+# every rule; each other pod breaks exactly one.
+apiVersion: v1
+kind: Pod
+metadata: { name: baseline, namespace: demo }
+spec: &spec
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: app
+      image: ghcr.io/brv52/demo-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: foreign-registry, namespace: demo }
+spec:
+  securityContext: { runAsNonRoot: true, runAsUser: 65532, seccompProfile: { type: RuntimeDefault } }
+  containers:
+    - name: app
+      image: docker.io/library/nginx:1.29
+      securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: foreign-owner-init, namespace: demo }
+spec:
+  securityContext: { runAsNonRoot: true, runAsUser: 65532, seccompProfile: { type: RuntimeDefault } }
+  initContainers:
+    - name: init
+      image: ghcr.io/someone-else/tool:1.0
+      securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+  containers:
+    - name: app
+      image: ghcr.io/brv52/demo-api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: privileged, namespace: demo }
+spec:
+  securityContext: { runAsNonRoot: true, runAsUser: 65532, seccompProfile: { type: RuntimeDefault } }
+  containers:
+    - name: app
+      image: ghcr.io/brv52/demo-api:main
+      securityContext: { privileged: true, allowPrivilegeEscalation: true, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: host-path, namespace: demo }
+spec:
+  securityContext: { runAsNonRoot: true, runAsUser: 65532, seccompProfile: { type: RuntimeDefault } }
+  volumes:
+    - name: host
+      hostPath: { path: /var/run }
+  containers:
+    - name: app
+      image: ghcr.io/brv52/demo-api:main
+      securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: run-as-root, namespace: demo }
+spec:
+  securityContext: { runAsUser: 0, seccompProfile: { type: RuntimeDefault } }
+  containers:
+    - name: app
+      image: ghcr.io/brv52/demo-api:main
+      securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: privilege-escalation, namespace: demo }
+spec:
+  securityContext: { runAsNonRoot: true, runAsUser: 65532, seccompProfile: { type: RuntimeDefault } }
+  containers:
+    - name: app
+      image: ghcr.io/brv52/demo-api:main
+      securityContext: { capabilities: { drop: [ALL] } }
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: unsafe-capability, namespace: demo }
+spec:
+  securityContext: { runAsNonRoot: true, runAsUser: 65532, seccompProfile: { type: RuntimeDefault } }
+  containers:
+    - name: app
+      image: ghcr.io/brv52/demo-api:main
+      securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL], add: [NET_ADMIN] } }

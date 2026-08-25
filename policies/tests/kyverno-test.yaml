@@ -1,0 +1,35 @@
+# Offline policy tests, run in CI:  kyverno test policies/tests
+# Image signature and provenance rules need registry and Rekor access and
+# are exercised in-cluster by bench/attacks/ instead.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: tenant-admission
+policies:
+  - ../kyverno/restrict-registries.yaml
+  - ../vap/pod-security.yaml
+  - ../vap/pod-security-binding.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  - policy: restrict-registries
+    rule: allowed-registry
+    kind: Pod
+    resources: [baseline, privileged, host-path, run-as-root, privilege-escalation, unsafe-capability]
+    result: pass
+  - policy: restrict-registries
+    rule: allowed-registry
+    kind: Pod
+    resources: [foreign-registry, foreign-owner-init]
+    result: fail
+  - isValidatingAdmissionPolicy: true
+    policy: platform-idp-pod-security
+    kind: Pod
+    resources: [baseline, foreign-registry, foreign-owner-init]
+    result: pass
+  - isValidatingAdmissionPolicy: true
+    policy: platform-idp-pod-security
+    kind: Pod
+    resources: [privileged, host-path, run-as-root, privilege-escalation, unsafe-capability]
+    result: fail

@@ -1,0 +1,87 @@
+# Supply-chain admission for tenant namespaces (label platform-idp/tenant=true).
+#
+# A pod is admitted only if every ghcr.io/brv52/ image (restrict-registries.yaml
+# rejects every other registry)
+#   1. is signed keyless by .github/workflows/release.yml of this repo,
+#   2. carries SLSA v0.2 provenance signed by slsa-github-generator v2.1.0
+#      whose builder ID, source repository and entry point match ours,
+# and image tags are rewritten to the verified digest, so the image that
+# runs is byte-for-byte the one that was verified.
+#
+# Rules act on Pods only (autogen off): Argo CD keeps owning the tag-based
+# templates in git while the pods that actually run are pinned by digest.
+#
+# Identities are duplicated in supply-chain/identities.env; keep in sync.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-supply-chain
+  annotations:
+    policies.kyverno.io/title: Verify image signature and SLSA provenance
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    pod-policies.kyverno.io/autogen-controllers: none
+spec:
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-signature
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaceSelector:
+                matchLabels:
+                  platform-idp/tenant: "true"
+      verifyImages:
+        - imageReferences: ["ghcr.io/brv52/*"]
+          failureAction: Enforce
+          type: Cosign
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: https://token.actions.githubusercontent.com
+                    subjectRegExp: '^https://github\.com/brv52/platform-idp/\.github/workflows/release\.yml@refs/(heads/main|tags/v[0-9]+\.[0-9]+\.[0-9]+)$'
+                    rekor:
+                      url: https://rekor.sigstore.dev
+
+    - name: verify-slsa-provenance
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaceSelector:
+                matchLabels:
+                  platform-idp/tenant: "true"
+      verifyImages:
+        - imageReferences: ["ghcr.io/brv52/*"]
+          failureAction: Enforce
+          type: Cosign
+          mutateDigest: false
+          verifyDigest: true
+          required: true
+          attestations:
+            - type: https://slsa.dev/provenance/v0.2
+              attestors:
+                - entries:
+                    - keyless:
+                        issuer: https://token.actions.githubusercontent.com
+                        subject: https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@refs/tags/v2.1.0
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ builder.id }}"
+                      operator: Equals
+                      value: https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@refs/tags/v2.1.0
+                    - key: "{{ invocation.configSource.uri }}"
+                      operator: AnyIn
+                      value:
+                        - git+https://github.com/brv52/platform-idp@refs/heads/main
+                        - git+https://github.com/brv52/platform-idp@refs/tags/v*
+                    - key: "{{ invocation.configSource.entryPoint }}"
+                      operator: Equals
+                      value: .github/workflows/release.yml

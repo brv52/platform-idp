@@ -1,0 +1,38 @@
+# Tenant pods may only run images from this project's GHCR namespace, which
+# is the only place verify-images.yaml knows how to verify. Without this
+# rule an image from any other registry would simply not match the
+# verification rules and be admitted unverified.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-registries
+  annotations:
+    policies.kyverno.io/title: Restrict image registries
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    pod-policies.kyverno.io/autogen-controllers: none
+spec:
+  background: false
+  rules:
+    - name: allowed-registry
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaceSelector:
+                matchLabels:
+                  platform-idp/tenant: "true"
+      validate:
+        failureAction: Enforce
+        cel:
+          variables:
+            - name: images
+              expression: >-
+                object.spec.containers.map(c, c.image)
+                + object.spec.?initContainers.orValue([]).map(c, c.image)
+                + object.spec.?ephemeralContainers.orValue([]).map(c, c.image)
+          expressions:
+            - expression: variables.images.all(i, i.startsWith('ghcr.io/brv52/'))
+              messageExpression: >-
+                'images must come from ghcr.io/brv52/, got: '
+                + variables.images.filter(i, !i.startsWith('ghcr.io/brv52/')).join(', ')

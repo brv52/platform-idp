@@ -1,0 +1,26 @@
+# Applies to every namespace except the platform's own. Those run trusted,
+# pinned charts and some need host access by design (SPIRE agent and the
+# SPIFFE CSI driver mount the host's sockets and kubelet paths).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: platform-idp-pod-security
+spec:
+  policyName: platform-idp-pod-security
+  validationActions: [Deny, Audit]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - kube-public
+            - kube-node-lease
+            - local-path-storage
+            - argocd
+            - argo-rollouts
+            - kyverno
+            - monitoring
+            - spire-system
+            - spire-server
