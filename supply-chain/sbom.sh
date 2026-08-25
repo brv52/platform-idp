@@ -14,7 +14,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="${1:?usage: sbom.sh <image-ref> [outdir]}"
 OUT="${2:-${ROOT}/supply-chain/out}"
 SPEC="1.7"
-mkdir -p "${OUT}"
+# Absolute, because the module SBOM is generated from inside the module dir.
+OUT="$(mkdir -p "${OUT}" && cd "${OUT}" && pwd)"
 
 for bin in cyclonedx-gomod syft jq; do
   command -v "$bin" >/dev/null || { echo "missing $bin" >&2; exit 1; }
