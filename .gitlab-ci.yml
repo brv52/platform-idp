@@ -1,0 +1,224 @@
+# GitLab mirror of the GitHub pipelines (ci.yml + release.yml), for running
+# the project on a self-managed or EU-hosted GitLab.
+#
+#   validate  terraform fmt/validate/tflint, kyverno policy tests, shellcheck
+#   test      go vet, race tests, govulncheck
+#   build     image to $CI_REGISTRY_IMAGE by digest (BuildKit, reproducible)
+#   sbom      CycloneDX 1.7 (cyclonedx-gomod + syft)
+#   sign      keyless cosign v3 with the GitLab OIDC token (Fulcio/Rekor)
+#   attest    SBOM + SLSA v1 provenance attestations
+#   plan      terraform plan via cloud OIDC, only when configured
+#
+# Provenance note: on GitHub, provenance comes from slsa-github-generator's
+# isolated reusable workflow (SLSA Build L3). GitLab has no equivalent for
+# container images, so here the provenance is generated and signed by the
+# same pipeline that built the image. That is SLSA Build L2: signed and
+# hosted, but not isolated from the build steps. The Kyverno policy in
+# policies/kyverno/ trusts only the GitHub identities.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+
+stages: [validate, test, build, sbom, sign, attest, plan]
+
+variables:
+  GO_IMAGE: golang:1.27-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c
+  TERRAFORM_IMAGE: hashicorp/terraform:1.16.6
+  COSIGN_VERSION: v3.1.3
+  SYFT_VERSION: v1.55.0
+  CYCLONEDX_GOMOD_VERSION: v1.12.0
+  KYVERNO_VERSION: v1.19.1
+  IMAGE: $CI_REGISTRY_IMAGE/demo-api
+
+.release_rules:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: [services/demo-api/**/*, supply-chain/**/*, .gitlab-ci.yml]
+    - if: $CI_COMMIT_TAG
+
+.cosign:
+  image: alpine:3.22
+  before_script:
+    - apk add --no-cache curl jq bash
+    - curl -sSfL -o /usr/local/bin/cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+    - chmod +x /usr/local/bin/cosign
+    - cosign login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+  # cosign reads SIGSTORE_ID_TOKEN automatically for keyless signing.
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+
+# ------------------------------------------------------------------ validate
+
+terraform:
+  stage: validate
+  image:
+    name: $TERRAFORM_IMAGE
+    entrypoint: [""]
+  parallel:
+    matrix:
+      - ENV: [aws-dev, azure-dev]
+  script:
+    - terraform fmt -check -recursive infra/terraform
+    - cd "infra/terraform/envs/$ENV"
+    - terraform init -backend=false -input=false -lockfile=readonly
+    - terraform validate
+
+tflint:
+  stage: validate
+  image:
+    name: ghcr.io/terraform-linters/tflint:v0.65.0
+    entrypoint: [""]
+  script:
+    - cd infra/terraform
+    - tflint --init --config "$PWD/.tflint.hcl"
+    - tflint --recursive --config "$PWD/.tflint.hcl"
+
+policies:
+  stage: validate
+  image: alpine:3.22
+  script:
+    - apk add --no-cache curl tar
+    - curl -sSfL "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/kyverno-cli_${KYVERNO_VERSION}_linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin kyverno
+    - kyverno test policies/tests
+
+shellcheck:
+  stage: validate
+  image: koalaman/shellcheck-alpine:v0.11.0
+  script:
+    - apk add --no-cache git
+    - shellcheck -x $(git ls-files '*.sh')
+
+# ------------------------------------------------------------------ test
+
+go:
+  stage: test
+  image: $GO_IMAGE
+  variables:
+    CGO_ENABLED: "1"
+  before_script:
+    - apk add --no-cache build-base git
+  script:
+    - cd services/demo-api
+    - test -z "$(gofmt -l .)"
+    - go vet ./...
+    - go test -race -coverprofile=coverage.out ./...
+    - go tool cover -func=coverage.out | tail -1
+    - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
+
+# ------------------------------------------------------------------ build
+
+build:
+  stage: build
+  extends: .release_rules
+  image: docker:29
+  services:
+    - docker:29-dind
+  variables:
+    DOCKER_TLS_CERTDIR: /certs
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - docker buildx create --use --name builder
+    - |
+      VERSION="${CI_COMMIT_TAG#v}"; VERSION="${VERSION:-0.0.0-${CI_COMMIT_SHORT_SHA}}"
+      export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+      docker buildx build services/demo-api \
+        --platform linux/amd64 \
+        --build-arg VERSION="$VERSION" \
+        --provenance=false --sbom=false \
+        --output type=registry,rewrite-timestamp=true \
+        --tag "$IMAGE:$CI_COMMIT_SHORT_SHA" \
+        --metadata-file metadata.json
+    - |
+      apk add --no-cache jq >/dev/null
+      echo "DIGEST=$(jq -r '."containerimage.digest"' metadata.json)" > build.env
+      cat build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+
+# ------------------------------------------------------------------ sbom
+
+sbom:
+  stage: sbom
+  extends: .release_rules
+  image: $GO_IMAGE
+  needs: [build]
+  before_script:
+    - apk add --no-cache bash curl jq git
+    - go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}
+    - export PATH="$PATH:$(go env GOPATH)/bin"
+    - curl -sSfL "https://raw.githubusercontent.com/anchore/syft/${SYFT_VERSION}/install.sh" | sh -s -- -b /usr/local/bin "$SYFT_VERSION"
+  script:
+    - export SYFT_REGISTRY_AUTH_AUTHORITY="$CI_REGISTRY" SYFT_REGISTRY_AUTH_USERNAME="$CI_REGISTRY_USER" SYFT_REGISTRY_AUTH_PASSWORD="$CI_REGISTRY_PASSWORD"
+    - supply-chain/sbom.sh "$IMAGE@$DIGEST" sbom
+  artifacts:
+    paths: [sbom/]
+    expire_in: 90 days
+
+# ------------------------------------------------------------------ sign
+
+sign:
+  stage: sign
+  extends: [.release_rules, .cosign]
+  needs: [build]
+  script:
+    - cosign sign --yes "$IMAGE@$DIGEST"
+
+# ------------------------------------------------------------------ attest
+
+attest:
+  stage: attest
+  extends: [.release_rules, .cosign]
+  needs: [build, sbom, sign]
+  script:
+    - cosign attest --yes --type cyclonedx --predicate sbom/demo-api.image.cdx.json "$IMAGE@$DIGEST"
+    # SLSA v1 provenance describing this pipeline run.
+    - |
+      jq -n \
+        --arg uri "git+${CI_PROJECT_URL}@${CI_COMMIT_REF_NAME}" \
+        --arg sha "$CI_COMMIT_SHA" \
+        --arg pipeline "${CI_PIPELINE_URL}" \
+        --arg builder "${CI_SERVER_URL}/${CI_PROJECT_PATH}/-/blob/${CI_COMMIT_SHA}/.gitlab-ci.yml" \
+        --arg started "$CI_PIPELINE_CREATED_AT" \
+        '{
+          buildDefinition: {
+            buildType: "https://gitlab.com/gitlab-org/gitlab-runner/-/blob/main/PROVENANCE.md",
+            externalParameters: {source: $uri, entryPoint: ".gitlab-ci.yml"},
+            resolvedDependencies: [{uri: $uri, digest: {gitCommit: $sha}}]
+          },
+          runDetails: {
+            builder: {id: $builder},
+            metadata: {invocationId: $pipeline, startedOn: $started}
+          }
+        }' > provenance.json
+    - cosign attest --yes --type slsaprovenance1 --predicate provenance.json "$IMAGE@$DIGEST"
+    - cosign verify "$IMAGE@$DIGEST" --certificate-oidc-issuer "$CI_SERVER_URL" --certificate-identity-regexp "^${CI_SERVER_URL}/${CI_PROJECT_PATH}//"
+
+# ------------------------------------------------------------------ plan
+
+# Configure AWS_PLAN_ROLE_ARN (CI/CD variable) with a trust policy for the
+# GitLab OIDC provider to enable. No static cloud credentials.
+plan:aws:
+  stage: plan
+  image:
+    name: $TERRAFORM_IMAGE
+    entrypoint: [""]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $AWS_PLAN_ROLE_ARN
+  id_tokens:
+    AWS_ID_TOKEN:
+      aud: sts.amazonaws.com
+  variables:
+    AWS_REGION: eu-central-1
+    AWS_ROLE_ARN: $AWS_PLAN_ROLE_ARN
+    AWS_WEB_IDENTITY_TOKEN_FILE: /tmp/web-identity-token
+  script:
+    - echo "$AWS_ID_TOKEN" > "$AWS_WEB_IDENTITY_TOKEN_FILE"
+    - cd infra/terraform/envs/aws-dev
+    - terraform init -input=false
+    - terraform plan -input=false -lock=false -no-color
