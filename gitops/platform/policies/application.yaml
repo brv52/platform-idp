@@ -1,0 +1,27 @@
+# Admission policies from policies/: Kyverno ClusterPolicies (registry
+# allowlist, signature and SLSA provenance verification) and the CEL
+# ValidatingAdmissionPolicy for pod security. Wave 0: after Kyverno's CRDs
+# and webhooks exist, before any tenant workload is created.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: policies
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/brv52/platform-idp.git
+    targetRevision: main
+    path: policies
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

@@ -11,10 +11,17 @@ labels:
   - pairs:
       app.kubernetes.io/part-of: platform-idp
     includeSelectors: false
-# A release is a change to this block (image) or to the pod template in
-# rollout.yaml (e.g. FAULT_* env for bench regressions). Both create a new
-# ReplicaSet revision and therefore a canary.
+configurations:
+  - kustomizeconfig.yaml
+# A release is a change to the image below or to release.env. Both change
+# the pod template, which creates a new ReplicaSet revision and a canary.
+configMapGenerator:
+  - name: demo-api-release
+    envs: [release.env]
+# Pinned by digest to the image release.yml built, signed and attested
+# (Kyverno would resolve and pin a tag anyway; pinning in git keeps the
+# desired state exact and makes Argo CD diffs meaningful).
 images:
   - name: demo-api
-    newName: localhost:5001/demo-api
-    newTag: "0.1.0"
+    newName: ghcr.io/brv52/demo-api
+    digest: sha256:77c21dd19b183d31cee9a024d45f9b82d3cf55f8e7929b4a71e6af6aa9c53d91

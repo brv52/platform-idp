@@ -1,0 +1,21 @@
+# Lets kustomize rewrite generated ConfigMap/Secret names inside Argo
+# Rollouts pod templates, as it does for Deployments.
+nameReference:
+  - kind: ConfigMap
+    version: v1
+    fieldSpecs:
+      - path: spec/template/spec/volumes/configMap/name
+        kind: Rollout
+      - path: spec/template/spec/containers/env/valueFrom/configMapKeyRef/name
+        kind: Rollout
+      - path: spec/template/spec/containers/envFrom/configMapRef/name
+        kind: Rollout
+  - kind: Secret
+    version: v1
+    fieldSpecs:
+      - path: spec/template/spec/volumes/secret/secretName
+        kind: Rollout
+      - path: spec/template/spec/containers/env/valueFrom/secretKeyRef/name
+        kind: Rollout
+      - path: spec/template/spec/containers/envFrom/secretRef/name
+        kind: Rollout

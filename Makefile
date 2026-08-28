@@ -39,7 +39,7 @@ lint: ## Static checks: go vet, terraform fmt/validate, tflint, kyverno test
 	$(TF) fmt -check -recursive infra/terraform
 	for env in infra/terraform/envs/*/; do (cd $$env && $(TF) init -backend=false -input=false >/dev/null && $(TF) validate); done
 	if command -v tflint >/dev/null; then cd infra/terraform && tflint --init --config "$$PWD/.tflint.hcl" >/dev/null && tflint --recursive --config "$$PWD/.tflint.hcl"; else echo "tflint not installed, skipping"; fi
-	command -v kyverno >/dev/null && kyverno test policies/kyverno || echo "kyverno CLI not installed, skipping"
+	command -v kyverno >/dev/null && kyverno test policies/tests || echo "kyverno CLI not installed, skipping"
 
 .PHONY: bench
 bench: ## Run the full benchmark suite and render metrics.json + docs/results.md

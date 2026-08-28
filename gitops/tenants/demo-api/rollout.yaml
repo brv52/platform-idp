@@ -87,6 +87,11 @@ spec:
             # Only workloads in this trust domain may call the mTLS port.
             - name: MTLS_AUTHORIZE
               value: platform-idp.local
+          # Per-release settings from release.env (kustomize appends a
+          # content hash to the name, so every change is a new revision).
+          envFrom:
+            - configMapRef:
+                name: demo-api-release
           readinessProbe:
             httpGet: { path: /readyz, port: ops }
             periodSeconds: 5

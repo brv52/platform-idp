@@ -6,7 +6,7 @@
 # clusters/local/argocd-values.yaml):
 #   -2  spire-crds
 #   -1  argo-rollouts, kyverno, spire, prometheus
-#    0  otel-collector
+#    0  otel-collector, policies
 #    1  tenants
 apiVersion: argoproj.io/v1alpha1
 kind: Application
