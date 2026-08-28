@@ -41,6 +41,9 @@ spec:
         any:
           - resources:
               kinds: [Pod]
+              # Never DELETE: there is no object to evaluate, and a failing
+              # rule would block pod deletion (scale-down, rollbacks).
+              operations: [CREATE, UPDATE]
               namespaceSelector:
                 matchLabels:
                   platform-idp/tenant: "true"
@@ -64,6 +67,9 @@ spec:
         any:
           - resources:
               kinds: [Pod]
+              # Never DELETE: there is no object to evaluate, and a failing
+              # rule would block pod deletion (scale-down, rollbacks).
+              operations: [CREATE, UPDATE]
               namespaceSelector:
                 matchLabels:
                   platform-idp/tenant: "true"
