@@ -11,6 +11,17 @@
 # Rules act on Pods only (autogen off): Argo CD keeps owning the tag-based
 # templates in git while the pods that actually run are pinned by digest.
 #
+# Two storage formats, two verifier types (verified against the real release
+# image, not assumed):
+#   - release.yml signs with cosign v3, which stores a Sigstore bundle as an
+#     OCI referrer. Kyverno's classic Cosign verifier does not see it ("no
+#     signatures found"); type SigstoreBundle does.
+#   - slsa-github-generator v2.1.0 attests with cosign v2.2.3 in the legacy
+#     <digest>.att layout, which only the Cosign verifier reads.
+# Both rules set mutateDigest: when only the first one rewrote tag to digest,
+# the second rule's result was recorded against the old reference and the
+# validating webhook rejected the pod as "unverified image".
+#
 # Identities are duplicated in supply-chain/identities.env; keep in sync.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
@@ -36,7 +47,7 @@ spec:
       verifyImages:
         - imageReferences: ["ghcr.io/brv52/*"]
           failureAction: Enforce
-          type: Cosign
+          type: SigstoreBundle
           mutateDigest: true
           verifyDigest: true
           required: true
@@ -60,7 +71,7 @@ spec:
         - imageReferences: ["ghcr.io/brv52/*"]
           failureAction: Enforce
           type: Cosign
-          mutateDigest: false
+          mutateDigest: true
           verifyDigest: true
           required: true
           attestations:

@@ -3,9 +3,9 @@
 #
 #   sign.sh <registry/repo@sha256:...> <image-sbom.cdx.json>
 #
-# cosign v3 always writes the Sigstore protobuf bundle (the v2
-# --new-bundle-format opt-in no longer exists as a flag; it is the only
-# format). Run where an OIDC token is available: GitHub Actions with
+# cosign v3 writes Sigstore protobuf bundles attached as OCI referrers by
+# default (the v2 --new-bundle-format opt-in is now a hidden, deprecated
+# flag that defaults to true). Run where an OIDC token is available: GitHub Actions with
 # id-token: write, GitLab with an id_tokens entry (aud: sigstore), or
 # interactively (browser flow).
 set -euo pipefail

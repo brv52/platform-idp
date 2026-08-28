@@ -16,9 +16,12 @@ source "${HERE}/identities.env"
 REF="${1:?usage: provenance.sh <image@digest>}"
 
 echo "== slsa provenance"
-# The generator pins cosign v2.2.3 and stores provenance the classic way;
-# cosign v3 verifies both storage formats.
-cosign verify-attestation "${REF}" --type slsaprovenance \
+# The generator pins cosign v2.2.3, which stores provenance in the legacy
+# layout (<digest>.att tag, DSSE envelope + Rekor bundle annotations). By
+# default cosign v3 only looks at Sigstore bundles attached as OCI
+# referrers, so the legacy reader has to be selected explicitly. The flag is
+# deprecated but still the only way in v3.1 to read pre-v3 attestations.
+cosign verify-attestation "${REF}" --type slsaprovenance --new-bundle-format=false \
   --certificate-oidc-issuer "${OIDC_ISSUER}" \
   --certificate-identity "${SLSA_BUILDER_ID}" \
   | jq -r '.payload | @base64d | fromjson | .predicate
