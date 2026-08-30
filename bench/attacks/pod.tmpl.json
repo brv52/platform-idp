@@ -1,0 +1,25 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": { "generateName": "attack-", "namespace": "__NS__" },
+  "spec": {
+    "automountServiceAccountToken": false,
+    "securityContext": {
+      "runAsNonRoot": true,
+      "runAsUser": 65532,
+      "seccompProfile": { "type": "RuntimeDefault" }
+    },
+    "containers": [
+      {
+        "name": "app",
+        "image": "__IMAGE__",
+        "args": ["serve"],
+        "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "readOnlyRootFilesystem": true,
+          "capabilities": { "drop": ["ALL"] }
+        }
+      }
+    ]
+  }
+}
