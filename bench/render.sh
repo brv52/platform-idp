@@ -6,7 +6,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 need jq
 
-in() { local f="${BENCH_OUT}/$1.json"; if [[ -s "$f" ]]; then cat "$f"; else echo null; fi; }
+bench_json() { local f="${BENCH_OUT}/$1.json"; if [[ -s "$f" ]]; then cat "$f"; else echo null; fi; }
 CONTROLS_DOC="${BENCH_ROOT}/docs/compliance/nis2-dora-map.md"
 controls=$(grep -oE '^\| C[0-9]+ \|' "$CONTROLS_DOC" 2>/dev/null | sort -u | wc -l)
 
@@ -20,8 +20,8 @@ env_json=$(jq -n \
 
 jq -n \
   --argjson env "$env_json" \
-  --argjson reg "$(in regressions)" --argjson clean "$(in clean-releases)" \
-  --argjson adm "$(in admission-k6)" --argjson att "$(in attacks)" --argjson rot "$(in svid-rotation)" \
+  --argjson reg "$(bench_json regressions)" --argjson clean "$(bench_json clean-releases)" \
+  --argjson adm "$(bench_json admission-k6)" --argjson att "$(bench_json attacks)" --argjson rot "$(bench_json svid-rotation)" \
   --argjson controls "${controls:-0}" '
   def ratio(a; b): if a == null or b == null or b == 0 then null else ((a / b) * 1000 | round / 1000) end;
   {
