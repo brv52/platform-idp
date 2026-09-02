@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-09-02T22:16:13Z",
+  "environment": {
+    "kubernetes": "v1.37.1",
+    "nodes": 4,
+    "host_kernel": "5.15.167.4-microsoft-standard-WSL2",
+    "host_cpus": 10,
+    "host_memory": "11.7 GiB",
+    "git_commit": "1125209"
+  },
+  "idp_tp": 1,
+  "idp_false_rb": 0,
+  "idp_clean": 1,
+  "idp_detect": 159.4,
+  "idp_lead": 356.2,
+  "zt_adm_p99": 11034.6,
+  "zt_attacks": 1,
+  "zt_rot": 0,
+  "zt_controls": 12,
+  "units": {
+    "idp_tp": "bad releases aborted / bad releases shipped",
+    "idp_false_rb": "clean releases aborted / clean releases shipped",
+    "idp_clean": "clean releases promoted / clean releases shipped",
+    "idp_detect": "seconds, median, canary start to abort",
+    "idp_lead": "seconds, p50, git commit to full promotion",
+    "zt_adm_p99": "milliseconds, p99 pod admission latency (dry-run) under k6 load",
+    "zt_attacks": "attacks rejected / attacks replayed",
+    "zt_rot": "failed mTLS handshakes across SVID rotations (target 0)",
+    "zt_controls": "controls mapped in docs/compliance/nis2-dora-map.md"
+  },
+  "context": {
+    "regressions": {
+      "total": 5
+    },
+    "clean_releases": {
+      "total": 5
+    },
+    "admission": {
+      "vus": 500,
+      "think_s": 1,
+      "requests": 16600,
+      "rps": 162.3,
+      "failed": 0,
+      "p50_ms": 963.00929,
+      "p95_ms": 7267.409517249988,
+      "kyverno_replicas": 3
+    },
+    "attacks": {
+      "baseline_admitted": true
+    },
+    "svid_rotation": {
+      "svid_ttl": "5m",
+      "duration": "15m",
+      "requests": 17999,
+      "client_rotations": 6,
+      "server_rotations": 24
+    }
+  }
+}

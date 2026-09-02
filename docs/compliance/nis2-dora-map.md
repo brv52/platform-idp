@@ -9,7 +9,7 @@ Those are marked as gaps at the end.
 ## Sources and how they were checked
 
 Every article, section and point number below was checked against the text
-of the act on 2026-10-23. Nothing was cited from memory.
+of the act on 2026-09-02. Nothing was cited from memory.
 
 | Act | Short name here | Text read |
 |---|---|---|

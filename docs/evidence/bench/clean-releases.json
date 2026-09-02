@@ -1,0 +1,207 @@
+{
+  "bench": "clean-releases",
+  "generated_at": "2026-09-02T21:54:44Z",
+  "releases": [
+    {
+      "release": 1,
+      "expected": "promoted",
+      "t_commit": 1792790697,
+      "outcome": "promoted",
+      "canary_hash": "5969c657f4",
+      "t_start": 1792790702.588272916,
+      "t_canary": 1792790702.687668555,
+      "t_end": 1792791051.974880948,
+      "canary_to_end_s": 349.3,
+      "analysis": [
+        {
+          "metric": "canary-restarts",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-slow",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "latency-p99",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0.00495]"
+        }
+      ],
+      "lead_s": 355,
+      "false_rollback": false
+    },
+    {
+      "release": 2,
+      "expected": "promoted",
+      "t_commit": 1792791052,
+      "outcome": "promoted",
+      "canary_hash": "756554cb44",
+      "t_start": 1792791060.502626018,
+      "t_canary": 1792791060.607618819,
+      "t_end": 1792791408.239279577,
+      "canary_to_end_s": 347.6,
+      "analysis": [
+        {
+          "metric": "canary-restarts",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-slow",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "latency-p99",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0.00495]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        }
+      ],
+      "lead_s": 356.2,
+      "false_rollback": false
+    },
+    {
+      "release": 3,
+      "expected": "promoted",
+      "t_commit": 1792791408,
+      "outcome": "promoted",
+      "canary_hash": "7dd5dc8df6",
+      "t_start": 1792791414.514627854,
+      "t_canary": 1792791414.615061542,
+      "t_end": 1792791770.410272768,
+      "canary_to_end_s": 355.8,
+      "analysis": [
+        {
+          "metric": "canary-restarts",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-slow",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "latency-p99",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0.00495]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        }
+      ],
+      "lead_s": 362.4,
+      "false_rollback": false
+    },
+    {
+      "release": 4,
+      "expected": "promoted",
+      "t_commit": 1792791770,
+      "outcome": "promoted",
+      "canary_hash": "b55d7d6bc",
+      "t_start": 1792791776.708724337,
+      "t_canary": 1792791776.809783524,
+      "t_end": 1792792128.662693651,
+      "canary_to_end_s": 351.9,
+      "analysis": [
+        {
+          "metric": "canary-restarts",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-slow",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "latency-p99",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0.00495]"
+        }
+      ],
+      "lead_s": 358.7,
+      "false_rollback": false
+    },
+    {
+      "release": 5,
+      "expected": "promoted",
+      "t_commit": 1792792128,
+      "outcome": "promoted",
+      "canary_hash": "6bc795849b",
+      "t_start": 1792792134.213164804,
+      "t_canary": 1792792134.317847184,
+      "t_end": 1792792483.984371613,
+      "canary_to_end_s": 349.7,
+      "analysis": [
+        {
+          "metric": "canary-restarts",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-slow",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "latency-p99",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0.00495]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        }
+      ],
+      "lead_s": 356,
+      "false_rollback": false
+    }
+  ],
+  "summary": {
+    "total": 5,
+    "promoted": 5,
+    "false_rollbacks": 0,
+    "p50_lead_s": 356.2
+  }
+}

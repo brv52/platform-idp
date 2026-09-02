@@ -1,0 +1,61 @@
+{
+  "bench": "attacks",
+  "generated_at": "2026-09-02T20:25:58Z",
+  "signed_image": "ghcr.io/brv52/demo-api@sha256:77c21dd19b183d31cee9a024d45f9b82d3cf55f8e7929b4a71e6af6aa9c53d91",
+  "results": [
+    {
+      "attack": "baseline",
+      "expected": "admit",
+      "result": "admitted",
+      "verdict": "pass",
+      "expected_control": "",
+      "message": "pod/attack-sb7j6 "
+    },
+    {
+      "attack": "unsigned",
+      "expected": "deny",
+      "result": "denied",
+      "verdict": "pass",
+      "expected_control": "verify-supply-chain.*verify-signature",
+      "message": "Error from server: error when creating \"STDIN\": admission webhook \"mutate.kyverno.svc-fail\" denied the request: resource Pod/bench-attacks/ was blocked due to the following policies verify-supply-chain: verify-signature: 'failed to verify image ghcr.io/brv52/demo-api:attack-unsigned: .attestors[0].entries[0].keyless: sigstore bundle verification failed: no matching signatures found' verify-slsa-provenance: 'image attestations verification failed, verifiedCount: 0, requiredCount: 1, error: no matching attestations: ' "
+    },
+    {
+      "attack": "tag-swapped",
+      "expected": "deny",
+      "result": "denied",
+      "verdict": "pass",
+      "expected_control": "verify-supply-chain.*verify-signature",
+      "message": "Error from server: error when creating \"STDIN\": admission webhook \"mutate.kyverno.svc-fail\" denied the request: resource Pod/bench-attacks/ was blocked due to the following policies verify-supply-chain: verify-signature: 'failed to verify image ghcr.io/brv52/demo-api:attack-swapped: .attestors[0].entries[0].keyless: sigstore bundle verification failed: no matching signatures found' verify-slsa-provenance: 'image attestations verification failed, verifiedCount: 0, requiredCount: 1, error: no matching attestations: ' "
+    },
+    {
+      "attack": "foreign-builder",
+      "expected": "deny",
+      "result": "denied",
+      "verdict": "pass",
+      "expected_control": "verify-supply-chain.*verify-signature",
+      "message": "Error from server: error when creating \"STDIN\": admission webhook \"mutate.kyverno.svc-fail\" denied the request: resource Pod/bench-attacks/ was blocked due to the following policies verify-supply-chain: verify-signature: 'failed to verify image ghcr.io/brv52/demo-api:attack-foreign: .attestors[0].entries[0].keyless: sigstore bundle verification failed: no matching signatures found' verify-slsa-provenance: 'image attestations verification failed, verifiedCount: 0, requiredCount: 1, error: no matching attestations: ' "
+    },
+    {
+      "attack": "privileged",
+      "expected": "deny",
+      "result": "denied",
+      "verdict": "pass",
+      "expected_control": "platform-idp-pod-security.*privileged containers",
+      "message": "Error from server (Forbidden): error when creating \"STDIN\": pods \"attack-5hqfd\" is forbidden: ValidatingAdmissionPolicy 'platform-idp-pod-security' with binding 'platform-idp-pod-security' denied request: privileged containers are not allowed: app "
+    },
+    {
+      "attack": "host-path",
+      "expected": "deny",
+      "result": "denied",
+      "verdict": "pass",
+      "expected_control": "platform-idp-pod-security.*hostPath",
+      "message": "Error from server (Forbidden): error when creating \"STDIN\": pods \"attack-dqqcn\" is forbidden: ValidatingAdmissionPolicy 'platform-idp-pod-security' with binding 'platform-idp-pod-security' denied request: hostPath volumes are not allowed: host "
+    }
+  ],
+  "summary": {
+    "attacks": 5,
+    "blocked": 5,
+    "baseline_admitted": true,
+    "foreign_image_validly_signed_by_other_identity": "true"
+  }
+}

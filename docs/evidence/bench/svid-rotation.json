@@ -1,0 +1,31 @@
+{
+  "bench": "svid-rotation",
+  "generated_at": "2026-09-02T20:49:06Z",
+  "svid_ttl": "5m",
+  "duration": "15m",
+  "server_pods": 4,
+  "client": {
+    "requests": 17999,
+    "ok": 17999,
+    "handshake_failures": 0,
+    "http_errors": 0,
+    "other_errors": 0,
+    "distinct_server_svids": 28,
+    "started": "2026-09-02T20:28:49.603756848Z",
+    "finished": "2026-09-02T20:44:03.803314106Z",
+    "client_id": "spiffe://platform-idp.local/ns/demo/sa/rotation-client",
+    "target": "https://demo-api-mtls:8443/api/v1/whoami",
+    "client_rotations": 6,
+    "duration_seconds": 900.00040314
+  },
+  "summary": {
+    "requests": 17999,
+    "handshake_failures": 0,
+    "failures": 0,
+    "client_rotations": 6,
+    "distinct_server_svids": 28,
+    "server_rotations": 24,
+    "zero_failed_handshakes": true,
+    "rotations_observed": true
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "bench": "admission-k6",
+  "generated_at": "2026-09-02T20:27:42.055Z",
+  "vus": 500,
+  "think_s": 1,
+  "requests": 16600,
+  "rps": 162.3,
+  "failed": 0,
+  "latency_ms": {
+    "p50": 963.00929,
+    "p90": 2457.438198800001,
+    "p95": 7267.409517249988,
+    "p99": 11034.61796712997,
+    "max": 12335.95399,
+    "avg": 1442.6098760107866
+  },
+  "threshold_p99_ms": 650,
+  "threshold_ok": false,
+  "image": "ghcr.io/brv52/demo-api@sha256:77c21dd19b183d31cee9a024d45f9b82d3cf55f8e7929b4a71e6af6aa9c53d91",
+  "kyverno_admission_replicas": [
+    {
+      "pod": "kyverno-admission-controller-858f57645b-5bblp",
+      "node": "platform-idp-worker"
+    },
+    {
+      "pod": "kyverno-admission-controller-858f57645b-9dx7l",
+      "node": "platform-idp-worker3"
+    },
+    {
+      "pod": "kyverno-admission-controller-858f57645b-mvh5j",
+      "node": "platform-idp-worker2"
+    }
+  ],
+  "k6_exit_code": 99
+}

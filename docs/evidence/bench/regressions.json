@@ -1,0 +1,206 @@
+{
+  "bench": "regressions",
+  "generated_at": "2026-09-02T21:24:47Z",
+  "cases": [
+    {
+      "case": "error-20",
+      "fault": "FAULT_ERROR_PERCENT=20",
+      "expected": "aborted",
+      "t_commit": 1792789399,
+      "outcome": "aborted",
+      "canary_hash": "b94544fcd",
+      "t_start": 1792789407.445345239,
+      "t_canary": 1792789407.544239204,
+      "t_end": 1792789566.961658518,
+      "canary_to_end_s": 159.4,
+      "analysis": [
+        {
+          "metric": "latency-p99",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0.00495]"
+        },
+        {
+          "metric": "error-burn-slow",
+          "phase": "Failed",
+          "failed": 3,
+          "last": "[39.03860160233066]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Failed",
+          "failed": 3,
+          "last": "[39.196223270712856]"
+        },
+        {
+          "metric": "canary-restarts",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        }
+      ],
+      "detected": true
+    },
+    {
+      "case": "error-5",
+      "fault": "FAULT_ERROR_PERCENT=5",
+      "expected": "aborted",
+      "t_commit": 1792789642,
+      "outcome": "aborted",
+      "canary_hash": "6dddd5547c",
+      "t_start": 1792789647.778347571,
+      "t_canary": 1792789647.876035711,
+      "t_end": 1792789805.262128335,
+      "canary_to_end_s": 157.4,
+      "analysis": [
+        {
+          "metric": "canary-restarts",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-slow",
+          "phase": "Failed",
+          "failed": 3,
+          "last": "[9.752650176678443]"
+        },
+        {
+          "metric": "latency-p99",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0.0049499999999999995]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[4.8076923076923075]"
+        }
+      ],
+      "detected": true
+    },
+    {
+      "case": "latency-400ms",
+      "fault": "FAULT_LATENCY=400ms FAULT_LATENCY_PERCENT=100",
+      "expected": "aborted",
+      "t_commit": 1792789883,
+      "outcome": "aborted",
+      "canary_hash": "66646fb97d",
+      "t_start": 1792789889.308015883,
+      "t_canary": 1792789889.417133264,
+      "t_end": 1792790048.820575034,
+      "canary_to_end_s": 159.4,
+      "analysis": [
+        {
+          "metric": "canary-restarts",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "error-burn-slow",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "latency-p99",
+          "phase": "Failed",
+          "failed": 3,
+          "last": "[0.499]"
+        }
+      ],
+      "detected": true
+    },
+    {
+      "case": "latency-tail",
+      "fault": "FAULT_LATENCY=1s FAULT_LATENCY_PERCENT=5",
+      "expected": "aborted",
+      "t_commit": 1792790132,
+      "outcome": "aborted",
+      "canary_hash": "8f67d64c7",
+      "t_start": 1792790140.627714432,
+      "t_canary": 1792790140.742414128,
+      "t_end": 1792790300.631497925,
+      "canary_to_end_s": 159.9,
+      "analysis": [
+        {
+          "metric": "error-burn-slow",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "canary-restarts",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "latency-p99",
+          "phase": "Failed",
+          "failed": 3,
+          "last": "[2.2034615384615353]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        }
+      ],
+      "detected": true
+    },
+    {
+      "case": "crash-loop",
+      "fault": "FAULT_CRASH_AFTER=45s",
+      "expected": "aborted",
+      "t_commit": 1792790379,
+      "outcome": "aborted",
+      "canary_hash": "848cdc9cf6",
+      "t_start": 1792790388.429025474,
+      "t_canary": 1792790388.534716938,
+      "t_end": 1792790607.871741761,
+      "canary_to_end_s": 219.3,
+      "analysis": [
+        {
+          "metric": "error-burn-slow",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        },
+        {
+          "metric": "latency-p99",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0.00495]"
+        },
+        {
+          "metric": "canary-restarts",
+          "phase": "Failed",
+          "failed": 3,
+          "last": "[3]"
+        },
+        {
+          "metric": "error-burn-fast",
+          "phase": "Successful",
+          "failed": 0,
+          "last": "[0]"
+        }
+      ],
+      "detected": true
+    }
+  ],
+  "summary": {
+    "total": 5,
+    "detected": 5,
+    "median_detect_s": 159.4
+  }
+}
