@@ -32,6 +32,11 @@ restore() {
   k -n "$NS" delete job "$JOB" --ignore-not-found --wait=false >/dev/null || true
   root_autosync on || true
   app_refresh root || true
+  # Wait for the revert, so a following bench that pauses the root app
+  # again cannot leave the short TTL in place.
+  local deadline=$(( $(date +%s) + 300 ))
+  until [[ "$(ttl)" == "1h" ]] || (( $(date +%s) > deadline )); do sleep 3; done
+  [[ "$(ttl)" == "1h" ]] || warn "SPIRE TTL is still $(ttl); check the spire Application"
   return "$rc"
 }
 
@@ -107,7 +112,11 @@ spec:
 YAML
 
 secs=$(( $(sed -E 's/m$/*60/; s/s$//; s/h$/*3600/' <<<"$DURATION") ))
-k -n "$NS" wait --for=condition=Complete --for=condition=Failed "job/${JOB}" --timeout="$(( secs + 300 ))s" >/dev/null || true
+deadline=$(( $(date +%s) + secs + 300 ))
+until [[ -n "$(k -n "$NS" get job "$JOB" -o jsonpath='{.status.succeeded}{.status.failed}')" ]]; do
+  (( $(date +%s) < deadline )) || die "client job did not finish"
+  sleep 10
+done
 logs=$(k -n "$NS" logs "job/${JOB}")
 result=$(awk '/^\{$/ { buf = ""; on = 1 } on { buf = buf $0 "\n" } END { printf "%s", buf }' <<<"$logs")
 [[ -n "$result" ]] || { printf '%s\n' "$logs" | tail -20 >&2; die "client produced no result"; }

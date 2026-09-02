@@ -33,12 +33,44 @@ need() {
 
 # --- Argo CD ---------------------------------------------------------------
 
+# Wait until the root app has no sync operation queued or running. A sync
+# that is already under way keeps going after auto-sync is switched off and
+# would revert a child Application patched in the meantime.
+root_idle() {
+  local deadline=$(( $(date +%s) + ${1:-180} ))
+  while (( $(date +%s) < deadline )); do
+    [[ "$(k -n argocd get application root -o json | jq -r '(.operation != null) or (.status.operationState.phase == "Running")')" == "false" ]] && return 0
+    sleep 2
+  done
+  warn "root app still has a sync operation in progress"
+  return 1
+}
+
 # Stop the root app from reverting changes made to child Applications.
 root_autosync() {
   case "$1" in
-    off) k -n argocd patch application root --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}' >/dev/null ;;
+    off) k -n argocd patch application root --type merge -p '{"spec":{"syncPolicy":{"automated":null}}}' >/dev/null
+         root_idle ;;
     on)  k -n argocd patch application root --type merge -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' >/dev/null ;;
   esac
+}
+
+# Point the tenants app at a git revision and wait until Argo CD has synced
+# exactly that commit. Re-applies the patch if something reverted it.
+tenants_follow() { # revision commit-sha timeout_s
+  local rev="$1" sha="$2" deadline=$(( $(date +%s) + ${3:-300} )) st
+  while (( $(date +%s) < deadline )); do
+    st=$(k -n argocd get application tenants -o json | jq -r '[.spec.source.targetRevision, .status.sync.revision, .status.sync.status] | @tsv')
+    if [[ "${st%%$'\t'*}" != "$rev" ]]; then
+      k -n argocd patch application tenants --type merge -p "{\"spec\":{\"source\":{\"targetRevision\":\"${rev}\"}}}" >/dev/null
+      app_refresh tenants
+    elif [[ "$st" == "${rev}"$'\t'"${sha}"$'\t'"Synced" ]]; then
+      return 0
+    fi
+    sleep 3
+  done
+  warn "tenants app did not sync ${rev}@${sha:0:7} (last: ${st})"
+  return 1
 }
 
 # What a git webhook would do: ask Argo CD to re-read the repo now instead of
@@ -68,14 +100,12 @@ gitops_begin() { # run-id
   BENCH_WT="$(mktemp -d)"
   git -C "${BENCH_ROOT}" fetch -q "${GIT_REMOTE}" main
   git -C "${BENCH_ROOT}" worktree add -q -b "${BENCH_BRANCH}" "${BENCH_WT}" "${GIT_REMOTE}/main"
-  git -C "${BENCH_WT}" push -q "${GIT_REMOTE}" "${BENCH_BRANCH}"
+  git -C "${BENCH_WT}" push -q "${GIT_REMOTE}" "${BENCH_BRANCH}" 2>/dev/null
   BASE_RELEASE_ENV="$(cat "${BENCH_WT}/${RELEASE_ENV_PATH}")"
   trap gitops_end EXIT
   root_autosync off
-  k -n argocd patch application tenants --type merge \
-    -p "{\"spec\":{\"source\":{\"targetRevision\":\"${BENCH_BRANCH}\"}}}" >/dev/null
-  app_refresh tenants
-  app_wait_synced tenants 300 || die "tenants app did not settle on ${BENCH_BRANCH}"
+  tenants_follow "${BENCH_BRANCH}" "$(git -C "${BENCH_WT}" rev-parse HEAD)" 300 ||
+    die "tenants app did not settle on ${BENCH_BRANCH}"
   rollout_wait_healthy 600 || die "demo-api is not Healthy before the bench"
   log "releases go to ${GIT_REMOTE}/${BENCH_BRANCH}"
 }
@@ -86,7 +116,10 @@ gitops_end() {
   log "restoring tenants app to main"
   k -n argocd patch application tenants --type merge -p '{"spec":{"source":{"targetRevision":"main"}}}' >/dev/null || true
   root_autosync on || true
+  app_refresh root || true
   app_refresh tenants || true
+  root_idle 180 || true
+  app_wait_synced tenants 300 || true
   git -C "${BENCH_ROOT}" worktree remove --force "${BENCH_WT}" || true
   git -C "${BENCH_ROOT}" branch -q -D "${BENCH_BRANCH}" || true
   git -C "${BENCH_ROOT}" push -q "${GIT_REMOTE}" --delete "${BENCH_BRANCH}" || true
@@ -95,19 +128,26 @@ gitops_end() {
 }
 
 # release_push <message> [KEY=VALUE ...]
-# Writes release.env as the baseline plus the given keys, commits, pushes and
-# triggers a refresh. Prints the commit's unix time.
+# Writes release.env as the baseline with the given keys set (replacing a
+# baseline key of the same name; kustomize rejects duplicate keys), commits,
+# pushes and waits until Argo CD has synced that commit. Prints the commit's
+# unix time.
 release_push() {
   local msg="$1"; shift
+  local env="${BASE_RELEASE_ENV}" kv
+  for kv in "$@"; do
+    env=$(grep -v "^${kv%%=*}=" <<<"$env" || true)
+  done
   {
-    printf '%s\n' "${BASE_RELEASE_ENV}"
-    local kv
+    printf '%s\n' "$env"
     for kv in "$@"; do printf '%s\n' "$kv"; done
   } > "${BENCH_WT}/${RELEASE_ENV_PATH}"
   git -C "${BENCH_WT}" add "${RELEASE_ENV_PATH}"
   git -C "${BENCH_WT}" commit -q -m "bench: ${msg}"
-  git -C "${BENCH_WT}" push -q "${GIT_REMOTE}" "${BENCH_BRANCH}"
+  git -C "${BENCH_WT}" push -q "${GIT_REMOTE}" "${BENCH_BRANCH}" 2>/dev/null
   app_refresh tenants
+  tenants_follow "${BENCH_BRANCH}" "$(git -C "${BENCH_WT}" rev-parse HEAD)" 180 >&2 ||
+    die "Argo CD did not sync the release commit (render error?)"
   git -C "${BENCH_WT}" log -1 --format=%ct
 }
 
